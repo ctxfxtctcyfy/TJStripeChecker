@@ -4,6 +4,8 @@ import time
 import requests
 import logging
 import threading
+import random
+import string
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -522,7 +524,4 @@ def on_gen_redeem(message):
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_maint")
 def cb_maint(cq):
-    if not is_owner(cq.from_user.id): return
-    db["maintenance"] = not db["maintenance"]
-    save_db(db)
-    bot.edit_message_text(f"🔧 Maint: <b>{'ON' if db['maintenance'] else 'OFF'}</b>", chat_id=cq.message.chat.id, message_id=cq.message.message_id, reply_markup=kb
+    if not is_owner(cq.from_user.id):
