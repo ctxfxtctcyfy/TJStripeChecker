@@ -6,7 +6,7 @@ import telebot
 from telebot import types
 import user_agent
 
-BOT_TOKEN = "9243123880:AAGrHcLptgQHFnF2rjHpwt7ALclTp4Dy6zs"
+BOT_TOKEN = "9131645612:AAH_AWbyZNMx8GoljJmq0BB5s4BX3-cqTfg"
 OWNER_ID = 7799774057
 CHANNEL_ID = "@TirexFre"
 CHANNEL_URL = "https://t.me/TirexFre"
