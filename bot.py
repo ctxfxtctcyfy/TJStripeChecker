@@ -63,7 +63,6 @@ def save_db(db):
     with open(DB_FILE, "w") as f: json.dump(db, f)
 
 db = load_db()
-
 user_state = {}
 
 def set_state(uid, st): user_state[uid] = st
@@ -153,15 +152,15 @@ def kb_plans():
 def gate(message):
     uid = message.from_user.id
     if db["maintenance"] and not is_owner(uid):
-        return bot.reply_to(message, "🛠 <b>Bot is currently under maintenance.</b>\nPlease check back later.", reply_markup=kb_maintenance())
-    if is_banned(uid): return bot.reply_to(message, "🚫 <b>Access Denied.</b>\nYou have been banned.")
+        return bot.reply_to(message, "🛠 <b>Bot is currently under maintenance.</b>", reply_markup=kb_maintenance())
+    if is_banned(uid): return bot.reply_to(message, "🚫 <b>Access Denied.</b>")
     if not is_member(uid):
-        return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>\nYou must join our channel.", reply_markup=kb_join())
+        return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>", reply_markup=kb_join())
     return True
 
 def get_bin_info(binn):
     try:
-        r = requests.get(f'https://binchk-api.vercel.app/bin={binn}', timeout=5).json()
+        r = requests.get('https://binchk-api.vercel.app/bin=' + binn, timeout=5).json()
         return r.get('brand', 'N/A'), r.get('type', 'N/A'), r.get('bank', 'N/A'), r.get('country', 'N/A'), r.get('flag', '🏳️')
     except: return 'N/A', 'N/A', 'N/A', 'N/A', '🏳️'
 
@@ -194,22 +193,18 @@ def run_check(message, creds):
     rem = get_remaining(uid)
     if rem <= 0:
         set_state(uid, "menu")
-        return bot.reply_to(message, "⚠️ <b>Limit Exhausted!</b>\nUpgrade your plan.", reply_markup=kb_menu(uid))
-    
+        return bot.reply_to(message, "⚠️ <b>Limit Exhausted!</b>", reply_markup=kb_menu(uid))
     total = len(creds)
     if not is_own and total > rem:
         total = rem
         creds = creds[:total]
-        bot.send_message(message.chat.id, f"⚠️ <b>Notice:</b> Checking only <b>{total}</b> cards due to your limit.")
-
-    status_msg = bot.reply_to(message, f"⚡ <b>Engine Started...</b>\n\n📊 Progress: <code>0 / {total}</code>\n✅ Hits: <code>0</code>\n❌ Declined: <code>0</code>")
+        bot.send_message(message.chat.id, "⚠️ <b>Notice:</b> Checking only " + str(total) + " cards due to your limit.")
+    status_msg = bot.reply_to(message, "⚡ <b>Engine Started...</b>\n\n📊 Progress: <code>0 / " + str(total) + "</code>\n✅ Hits: <code>0</code>\n❌ Declined: <code>0</code>")
     hits, declined, errors, done, last_edit = [], 0, 0, 0, 0
     lock = threading.Lock()
-    
     def _edit():
-        try: bot.edit_message_text(f"⚡ <b>Checking Cards...</b>\n\n📊 Progress: <code>{done} / {total}</code>\n✅ Hits: <code>{len(hits)}</code>\n❌ Declined: <code>{declined}</code>", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+        try: bot.edit_message_text("⚡ <b>Checking Cards...</b>\n\n📊 Progress: <code>" + str(done) + " / " + str(total) + "</code>\n✅ Hits: <code>" + str(len(hits)) + "</code>\n❌ Declined: <code>" + str(declined) + "</code>", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
         except: pass
-
     def worker(c):
         nonlocal declined, errors, done, last_edit
         res = check_stripe(c)
@@ -221,37 +216,31 @@ def run_check(message, creds):
             if time.time() - last_edit > 2.5 or done == total:
                 last_edit = time.time()
                 _edit()
-
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
         for _ in as_completed([ex.submit(worker, c) for c in creds]): pass
-
     if not is_own: u["used"] += total
     db["stats"]["checked"] += total
     db["stats"]["hits"] += len(hits)
     save_db(db)
-
     lines = []
     if hits:
         lines.append("💎 <b>CHARGED CARDS FOUND</b> 💎\n━━━━━━━━━━━━━━━━━━━━")
         for h in hits:
-            lines.append(f"💳 <code>{h[0]}</code>\n↯ <b>Status:</b> {h[2]}\n↯ <b>BIN:</b> {h[3]} - {h[4]}\n↯ <b>Bank:</b> {h[6]}\n↯ <b>Charged:</b> $1\n━━━━━━━━━━━━━━━━━━━━")
-    
+            lines.append("💳 <code>" + h[0] + "</code>\n↯ <b>Status:</b> " + h[2] + "\n↯ <b>BIN:</b> " + h[3] + " - " + h[4] + "\n↯ <b>Bank:</b> " + h[6] + "\n↯ <b>Charged:</b> $1\n━━━━━━━━━━━━━━━━━━━━")
     rem_str = "Unlimited (Owner)" if is_own else str(get_remaining(uid))
-    lines.append(f"📊 <b>EXECUTION SUMMARY</b>\n\n🔍 Total Checked: <code>{total}</code>\n❌ Declined: <code>{declined}</code>\n✅ Successful: <code>{len(hits)}</code>\n\n💳 <b>Cards Checked:</b> <code>{get_used(uid)}</code>\n🔋 <b>Remaining Limit:</b> <code>{rem_str}</code>")
+    lines.append("📊 <b>EXECUTION SUMMARY</b>\n\n🔍 Total Checked: <code>" + str(total) + "</code>\n❌ Declined: <code>" + str(declined) + "</code>\n✅ Successful: <code>" + str(len(hits)) + "</code>\n\n💳 <b>Cards Checked:</b> <code>" + str(get_used(uid)) + "</code>\n🔋 <b>Remaining Limit:</b> <code>" + rem_str + "</code>")
     res_txt = "\n".join(lines)
     try: bot.edit_message_text(res_txt[:4000], chat_id=status_msg.chat.id, message_id=status_msg.message_id)
     except: bot.send_message(message.chat.id, res_txt[:4000])
-
     if hits:
-        fname = f"Charged_{uid}_{int(time.time())}.txt"
+        fname = "Charged_" + str(uid) + "_" + str(int(time.time())) + ".txt"
         with open(fname, "w") as f:
-            for h in hits: f.write(f"{h[0]} -> {h[2]} | Charged: $1\n")
-        with open(fname, "rb") as f: bot.send_document(message.chat.id, f, caption=f"💎 <b>{len(hits)} Charged Cards Found!</b>")
+            for h in hits: f.write(h[0] + " -> " + h[2] + " | Charged: $1\n")
+        with open(fname, "rb") as f: bot.send_document(message.chat.id, f, caption="💎 <b>" + str(len(hits)) + " Charged Cards Found!</b>")
         os.remove(fname)
         if STICKER_SUCCESS: bot.send_sticker(message.chat.id, STICKER_SUCCESS)
-    
     if not is_own and get_remaining(uid) <= 0:
-        bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b> Upgrade to check more.", reply_markup=kb_plans())
+        bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b>", reply_markup=kb_plans())
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -296,7 +285,7 @@ def menu_stats(message):
     u = get_user(uid)
     plan = PLANS.get(u["sub"], {"name": "Free Trial"})
     rem_str = "Unlimited (Owner)" if is_owner(uid) else str(get_remaining(uid))
-    bot.reply_to(message, f"👤 <b>User Dashboard</b>\n\n💎 <b>Plan:</b> {plan['name']}\n✅ <b>Cards Checked:</b> <code>{get_used(uid)}</code>\n🔋 <b>Cards Remaining:</b> <code>{rem_str}</code>", reply_markup=kb_menu(uid))
+    bot.reply_to(message, "👤 <b>User Dashboard</b>\n\n💎 <b>Plan:</b> " + plan['name'] + "\n✅ <b>Cards Checked:</b> <code>" + str(get_used(uid)) + "</code>\n🔋 <b>Cards Remaining:</b> <code>" + rem_str + "</code>", reply_markup=kb_menu(uid))
 
 @bot.message_handler(func=lambda m: m.text == "❌ Cancel")
 def menu_cancel(message):
@@ -326,13 +315,13 @@ def on_file(message):
 def menu_plans(message):
     if not gate(message): return
     txt = "💎 <b>TirexJod Premium Plans (1 Week)</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-    for k, v in PLANS.items(): txt += f"🔹 {v['name']} : <code>{v['limit']}</code> Cards - <b>₹{v['price']}</b>\n"
-    bot.reply_to(message, txt + f"\n💳 <b>Payment UPI:</b> <code>{UPI_ID}</code>\n\nSelect a plan to buy:", reply_markup=kb_plans())
+    for k, v in PLANS.items(): txt += "🔹 " + v['name'] + " : <code>" + str(v['limit']) + "</code> Cards - <b>₹" + str(v['price']) + "</b>\n"
+    bot.reply_to(message, txt + "\n💳 <b>Payment UPI:</b> <code>" + UPI_ID + "</code>\n\nSelect a plan to buy:", reply_markup=kb_plans())
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_"))
 def cb_buy_plan(cq):
     plan_key = cq.data.split("_")[1]
-    bot.send_message(cq.from_user.id, f"🛒 <b>Plan:</b> {PLANS[plan_key]['name']}\nPay <b>₹{PLANS[plan_key]['price']}</b> to UPI: <code>{UPI_ID}</code>\n\n✍️ <b>Enter 12-digit UTR ID:</b>", reply_markup=kb_cancel())
+    bot.send_message(cq.from_user.id, "🛒 <b>Plan:</b> " + PLANS[plan_key]['name'] + "\nPay <b>₹" + str(PLANS[plan_key]['price']) + "</b> to UPI: <code>" + UPI_ID + "</code>\n\n✍️ <b>Enter 12-digit UTR ID:</b>", reply_markup=kb_cancel())
     user_state[cq.from_user.id] = {"state": "wait_utr", "plan": plan_key}
 
 @bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_utr" and m.text)
@@ -351,13 +340,11 @@ def on_screenshot(message):
     if "plan" not in data: return bot.reply_to(message, "❌ Error.")
     db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
     save_db(db)
-    
     send_sticker_or_text(uid, STICKER_PAYMENT, "✅ <b>Wait for Admin Approval</b>", kb_menu(uid))
     set_state(uid, "menu")
-    
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"appr_{uid}"), types.InlineKeyboardButton("❌ Disprove", callback_data=f"rej_{uid}"))
-    bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption=f"💰 <b>New Payment Request</b>\n\n👤 User: @{message.from_user.username or uid}\n💎 Plan: {PLANS[data['plan']]['name']}\n🧾 UTR: <code>{data['utr']}</code>", reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("✅ Approve", callback_data="appr_" + str(uid)), types.InlineKeyboardButton("❌ Disprove", callback_data="rej_" + str(uid)))
+    bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption="💰 <b>New Payment Request</b>\n\n👤 User: @" + str(message.from_user.username or uid) + "\n💎 Plan: " + PLANS[data['plan']]['name'] + "\n🧾 UTR: <code>" + data['utr'] + "</code>", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("appr_") or c.data.startswith("rej_"))
 def cb_approve_payment(cq):
@@ -371,7 +358,7 @@ def cb_approve_payment(cq):
         u.update({"sub": pd["plan"], "exp": time.time() + (7 * 24 * 60 * 60), "used": 0})
         save_db(db)
         bot.edit_message_caption("✅ Approved", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
-        bot.send_message(uid_str, f"🎉 <b>Payment Approved</b>\n\n💎 Subscription Activation: <b>{PLANS[pd['plan']]['name']}</b>\n⏳ Valid: 7 Days\n\nEnjoy Premium Access!", reply_markup=kb_menu(uid_str))
+        bot.send_message(uid_str, "🎉 <b>Payment Approved</b>\n\n💎 Subscription Activation: <b>" + PLANS[pd['plan']]['name'] + "</b>\n⏳ Valid: 7 Days\n\nEnjoy Premium Access!", reply_markup=kb_menu(uid_str))
     else:
         bot.edit_message_caption("❌ Disproved", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
         bot.send_message(uid_str, "❌ <b>Payment Fake Detection (Nigga)</b>\nYour payment proof is invalid.")
@@ -394,7 +381,7 @@ def on_redeem(message):
     rc["used_by"].append(uid)
     save_db(db)
     set_state(uid, "menu")
-    bot.reply_to(message, f"🎉 <b>Redeemed Successfully!</b>\n+{rc['cards']} Cards added to your limit.", reply_markup=kb_menu(uid))
+    bot.reply_to(message, "🎉 <b>Redeemed Successfully!</b>\n+" + str(rc['cards']) + " Cards added to your limit.", reply_markup=kb_menu(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_ban")
 def cb_ban(cq):
@@ -408,7 +395,7 @@ def on_adm_ban(message):
     if uname not in db["banned_users"]: db["banned_users"].append(uname)
     save_db(db)
     set_state(message.from_user.id, "menu")
-    bot.reply_to(message, f"🚫 @{uname} has been banned.", reply_markup=kb_menu(message.from_user.id))
+    bot.reply_to(message, "🚫 @" + uname + " has been banned.", reply_markup=kb_menu(message.from_user.id))
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_unban")
 def cb_unban(cq):
@@ -422,7 +409,7 @@ def on_adm_unban(message):
     if uname in db["banned_users"]: db["banned_users"].remove(uname)
     save_db(db)
     set_state(message.from_user.id, "menu")
-    bot.reply_to(message, f"✅ @{uname} has been unbanned.", reply_markup=kb_menu(message.from_user.id))
+    bot.reply_to(message, "✅ @" + uname + " has been unbanned.", reply_markup=kb_menu(message.from_user.id))
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_ban_sub")
 def cb_ban_sub(cq):
@@ -432,7 +419,7 @@ def cb_ban_sub(cq):
     kb = types.InlineKeyboardMarkup()
     for uid in subs:
         u = db["users"][uid]
-        kb.add(types.InlineKeyboardButton(f"@{u.get('username', uid)} ({u['sub'].upper()})", callback_data=f"cansub_{uid}"))
+        kb.add(types.InlineKeyboardButton("@" + u.get('username', uid) + " (" + u['sub'].upper() + ")", callback_data="cansub_" + str(uid)))
     bot.send_message(cq.from_user.id, "🛑 <b>Select Subscription to Cancel:</b>", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("cansub_"))
@@ -441,7 +428,7 @@ def cb_cancel_sub(cq):
     uid = cq.data.split("_")[1]
     get_user(uid).update({"sub": "none", "exp": 0, "used": 0})
     save_db(db)
-    bot.edit_message_text(f"🛑 Sub cancelled for {uid}.", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
+    bot.edit_message_text("🛑 Sub cancelled for " + uid + ".", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
     try: bot.send_message(uid, "🛑 Sub cancelled by Admin.")
     except: pass
 
@@ -460,4 +447,4 @@ def on_gen_redeem(message):
         db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
         save_db(db)
         set_state(message.from_user.id, "menu")
-        bot.reply_to(message, f"✅ <b>Code Generated!</b>\n<code>{code}</
+        bot.reply_to(message, "✅ <b>Code Generated!</b>\n<code>"
