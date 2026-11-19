@@ -15,9 +15,6 @@ import telebot
 from telebot import types
 import user_agent
 
-# ═══════════════════════════════════════════════════════════════════
-# 🔥 PREMIUM CONFIGURATION 🔥
-# ═══════════════════════════════════════════════════════════════════
 BOT_TOKEN   = "9135601732:AAFPZcKE7EIIB9ySbiATAtMEl21klsuiETY"
 OWNER_ID    = 7799774057
 CHANNEL_ID  = "@TirexFre"
@@ -27,7 +24,6 @@ DB_FILE     = "db.json"
 CONCURRENCY = 10
 FREE_LIMIT  = 50
 
-# 💎 STICKERS (Apni file_id daalna chaho to, warna emoji use hoga)
 STICKER_WELCOME = ""
 STICKER_SUCCESS = ""
 STICKER_PAYMENT = ""
@@ -41,7 +37,6 @@ PLANS = {
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 logging.basicConfig(level=logging.INFO)
 
-# ─────────────────── KEEP ALIVE SERVER ───────────────────
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -52,7 +47,6 @@ def run_dummy_server():
     HTTPServer(('0.0.0.0', port), DummyHandler).serve_forever()
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# ─────────────────── DATABASE ───────────────────
 DEFAULT_DB = {"banned_users": [], "maintenance": False, "owner": OWNER_ID, "users": {}, "pending_payments": {}, "redeem_codes": {}, "stats": {"checked": 0, "hits": 0}}
 def load_db():
     if not os.path.exists(DB_FILE):
@@ -65,7 +59,6 @@ def save_db(db):
     with open(DB_FILE, "w") as f: json.dump(db, f)
 db = load_db()
 
-# ─────────────────── HELPERS ───────────────────
 user_state = {}
 def set_state(uid, st): user_state[uid] = st
 def get_state(uid): return user_state.get(uid, "menu")
@@ -108,7 +101,6 @@ def send_sticker_or_text(chat_id, sticker_id, fallback_text, markup=None):
     else:
         bot.send_message(chat_id, fallback_text, reply_markup=markup)
 
-# ─────────────────── PREMIUM KEYBOARDS ───────────────────
 def kb_join():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📢 Join Official Channel", url=CHANNEL_URL))
@@ -155,7 +147,6 @@ def gate(message):
         return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>\nYou must join our channel to use the bot.", reply_markup=kb_join())
     return True
 
-# ─────────────────── CHECK LOGIC ───────────────────
 def get_bin_info(binn):
     try:
         r = requests.get(f'https://binchk-api.vercel.app/bin={binn}', timeout=5).json()
@@ -192,21 +183,17 @@ def run_check(message, creds):
     if rem <= 0:
         set_state(uid, "menu")
         return bot.reply_to(message, "⚠️ <b>Limit Exhausted!</b>\nYou have 0 cards left. Upgrade your plan.", reply_markup=kb_menu(uid))
-    
     total = len(creds)
     if not is_own and total > rem:
         total = rem
         creds = creds[:total]
         bot.send_message(message.chat.id, f"⚠️ <b>Notice:</b> Checking only <b>{total}</b> cards due to your remaining limit.")
-
     status_msg = bot.reply_to(message, f"⚡ <b>Engine Started...</b>\n\n📊 Progress: <code>0 / {total}</code>\n✅ Hits: <code>0</code>\n❌ Declined: <code>0</code>")
     hits, declined, errors, done, last_edit = [], 0, 0, 0, 0
     lock = threading.Lock()
-    
     def _edit():
         try: bot.edit_message_text(f"⚡ <b>Checking Cards...</b>\n\n📊 Progress: <code>{done} / {total}</code>\n✅ Hits: <code>{len(hits)}</code>\n❌ Declined: <code>{declined}</code>", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
         except: pass
-
     def worker(c):
         nonlocal declined, errors, done, last_edit
         res = check_stripe(c)
@@ -218,27 +205,22 @@ def run_check(message, creds):
             if time.time() - last_edit > 2.5 or done == total:
                 last_edit = time.time()
                 _edit()
-
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
         for _ in as_completed([ex.submit(worker, c) for c in creds]): pass
-
     if not is_own: u["used"] += total
     db["stats"]["checked"] += total
     db["stats"]["hits"] += len(hits)
     save_db(db)
-
     lines = []
     if hits:
         lines.append("💎 <b>CHARGED CARDS FOUND</b> 💎\n━━━━━━━━━━━━━━━━━━━━")
         for h in hits:
             lines.append(f"💳 <code>{h[0]}</code>\n↯ <b>Status:</b> {h[2]}\n↯ <b>BIN:</b> {h[3]} - {h[4]}\n↯ <b>Bank:</b> {h[6]}\n↯ <b>Charged:</b> $1\n━━━━━━━━━━━━━━━━━━━━")
-    
     rem_str = "Unlimited (Owner)" if is_own else str(get_remaining(uid))
     lines.append(f"📊 <b>EXECUTION SUMMARY</b>\n\n🔍 Total Checked: <code>{total}</code>\n❌ Declined: <code>{declined}</code>\n✅ Successful: <code>{len(hits)}</code>\n\n💳 <b>Cards Checked:</b> <code>{get_used(uid)}</code>\n🔋 <b>Remaining Limit:</b> <code>{rem_str}</code>")
     res_txt = "\n".join(lines)
     try: bot.edit_message_text(res_txt[:4000], chat_id=status_msg.chat.id, message_id=status_msg.message_id)
     except: bot.send_message(message.chat.id, res_txt[:4000])
-
     if hits:
         fname = f"Charged_{uid}_{int(time.time())}.txt"
         with open(fname, "w") as f:
@@ -246,11 +228,9 @@ def run_check(message, creds):
         with open(fname, "rb") as f: bot.send_document(message.chat.id, f, caption=f"💎 <b>{len(hits)} Charged Cards Found!</b>")
         os.remove(fname)
         if STICKER_SUCCESS: bot.send_sticker(message.chat.id, STICKER_SUCCESS)
-    
     if not is_own and get_remaining(uid) <= 0:
         bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b> Upgrade to check more.", reply_markup=kb_plans())
 
-# ─────────────────── HANDLERS ───────────────────
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     uid = message.from_user.id
@@ -320,7 +300,6 @@ def on_file(message):
     set_state(message.from_user.id, "menu")
     threading.Thread(target=run_check, args=(message, creds), daemon=True).start()
 
-# ─────────────────── SUBSCRIPTION ───────────────────
 @bot.message_handler(func=lambda m: m.text == "💎 Premium Plans")
 def menu_plans(message):
     if not gate(message): return
@@ -350,10 +329,8 @@ def on_screenshot(message):
     if "plan" not in data: return bot.reply_to(message, "❌ Error.")
     db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
     save_db(db)
-    
     send_sticker_or_text(uid, STICKER_PAYMENT, "✅ <b>Wait for Admin Approval</b>", kb_menu(uid))
     set_state(uid, "menu")
-    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"appr_{uid}"), types.InlineKeyboardButton("❌ Disprove", callback_data=f"rej_{uid}"))
     bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption=f"💰 <b>New Payment Request</b>\n\n👤 User: @{message.from_user.username or uid}\n💎 Plan: {PLANS[data['plan']]['name']}\n🧾 UTR: <code>{data['utr']}</code>", reply_markup=kb)
@@ -375,7 +352,6 @@ def cb_approve_payment(cq):
         bot.edit_message_caption("❌ Disproved", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
         bot.send_message(uid_str, "❌ <b>Payment Fake Detection (Nigga)</b>\nYour payment proof is invalid.")
 
-# ─────────────────── REDEEM ───────────────────
 @bot.message_handler(func=lambda m: m.text == "🔑 Redeem Code")
 def menu_redeem(message):
     if not gate(message): return
@@ -396,7 +372,6 @@ def on_redeem(message):
     set_state(uid, "menu")
     bot.reply_to(message, f"🎉 <b>Redeemed Successfully!</b>\n+{rc['cards']} Cards added to your limit.", reply_markup=kb_menu(uid))
 
-# ─────────────────── ADMIN PANEL ───────────────────
 @bot.callback_query_handler(func=lambda c: c.data == "adm_ban")
 def cb_ban(cq):
     if not is_owner(cq.from_user.id): return
@@ -440,4 +415,58 @@ def cb_ban_sub(cq):
 def cb_cancel_sub(cq):
     if not is_owner(cq.from_user.id): return
     uid = cq.data.split("_")[1]
-    get_user(uid).update({"sub": "none", "exp": 0
+    get_user(uid).update({"sub": "none", "exp": 0, "used": 0})
+    save_db(db)
+    bot.edit_message_text(f"🛑 Sub cancelled for {uid}.", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
+    try: bot.send_message(uid, "🛑 Sub cancelled by Admin.")
+    except: pass
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_gen_redeem")
+def cb_gen_redeem(cq):
+    if not is_owner(cq.from_user.id): return
+    set_state(cq.from_user.id, "adm_gen_limit")
+    bot.send_message(cq.from_user.id, "🎟 <b>Format:</b> `USES CARDS` (e.g. `5 1000`):", reply_markup=kb_cancel())
+
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "adm_gen_limit" and m.text)
+def on_gen_redeem(message):
+    if message.text == "❌ Cancel": return menu_cancel(message)
+    try:
+        uses, cards = map(int, message.text.split())
+        code = "TJ-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
+        save_db(db)
+        set_state(message.from_user.id, "menu")
+        bot.reply_to(message, f"✅ <b>Code Generated!</b>\n<code>{code}</code>\nUses: {uses} | Cards: {cards}", reply_markup=kb_menu(message.from_user.id))
+    except: bot.reply_to(message, "❌ Invalid format. Send like `5 1000`.")
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_maint")
+def cb_maint(cq):
+    if not is_owner(cq.from_user.id): return
+    db["maintenance"] = not db["maintenance"]
+    save_db(db)
+    bot.edit_message_text(f"
+    🔧 Maint: <b>{'ON' if db['maintenance'] else 'OFF'}</b>", chat_id=cq.message.chat.id, message_id=cq.message.message_id, reply_markup=kb_admin())
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_stats")
+def cb_stats(cq):
+    if not is_owner(cq.from_user.id): return
+    s = db["stats"]
+    bot.answer_callback_query(cq.id, f"Checked: {s['checked']} | Hits: {s['hits']}", show_alert=True)
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_users")
+def cb_users(cq):
+    if not is_owner(cq.from_user.id): return
+    total_users = len(db["users"])
+    fname = "users_list.csv"
+    with open(fname, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["ID", "Username", "Plan", "Used", "Expires"])
+        for uid, data in db["users"].items():
+            exp = datetime.fromtimestamp(data["exp"]).strftime('%Y-%m-%d') if data["exp"] > 0 else "N/A"
+            writer.writerow([uid, data.get("username", ""), data.get("sub", "none"), data.get("used", 0), exp])
+    with open(fname, "rb") as f:
+        bot.send_document(cq.from_user.id, f, caption=f"👥 Total Users: {total_users}")
+    os.remove(fname)
+
+if __name__ == "__main__":
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
