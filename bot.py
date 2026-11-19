@@ -147,6 +147,7 @@ def kb_admin():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🚫 Ban User",   callback_data="adm_ban"))
     kb.add(types.InlineKeyboardButton("🛑 Ban Subscription", callback_data="adm_ban_sub"))
+    kb.add(types.InlineKeyboardButton("🎟 Generate Redeem", callback_data="adm_gen_redeem"))
     kb.add(types.InlineKeyboardButton("🔧 Maintenance OFF" if not db["maintenance"] else "🔧 Maintenance ON", callback_data="adm_maint"))
     kb.add(types.InlineKeyboardButton("📈 Bot Stats",   callback_data="adm_stats"))
     return kb
@@ -514,14 +515,4 @@ def on_gen_redeem(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     try:
         uses, cards = map(int, message.text.split())
-        code = "TJ-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
-        save_db(db)
-        set_state(message.from_user.id, "menu")
-        bot.reply_to(message, f"✅ <b>Code Generated!</b>\n<code>{code}</code>\nUses: {uses} | Cards: {cards}", reply_markup=kb_menu(message.from_user.id))
-    except Exception:
-        bot.reply_to(message, "❌ Invalid format. Send like `5 1000`.")
-
-@bot.callback_query_handler(func=lambda c: c.data == "adm_maint")
-def cb_maint(cq):
-    if not is_owner(cq.from_user.id):
+        code =
