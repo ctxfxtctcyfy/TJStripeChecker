@@ -15,9 +15,6 @@ import telebot
 from telebot import types
 import user_agent
 
-# ═══════════════════════════════════════════════════════════════════
-# 🔥 PREMIUM CONFIGURATION 🔥
-# ═══════════════════════════════════════════════════════════════════
 BOT_TOKEN   = "9135601732:AAFPZcKE7EIIB9ySbiATAtMEl21klsuiETY"
 OWNER_ID    = 7799774057
 CHANNEL_ID  = "@TirexFre"
@@ -40,7 +37,6 @@ PLANS = {
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 logging.basicConfig(level=logging.INFO)
 
-# ─────────────────── KEEP ALIVE SERVER ───────────────────
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -53,7 +49,6 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# ─────────────────── DATABASE ───────────────────
 DEFAULT_DB = {"banned_users": [], "maintenance": False, "owner": OWNER_ID, "users": {}, "pending_payments": {}, "redeem_codes": {}, "stats": {"checked": 0, "hits": 0}}
 
 def load_db():
@@ -69,7 +64,6 @@ def save_db(db):
 
 db = load_db()
 
-# ─────────────────── HELPERS ───────────────────
 user_state = {}
 
 def set_state(uid, st): user_state[uid] = st
@@ -114,7 +108,6 @@ def send_sticker_or_text(chat_id, sticker_id, fallback_text, markup=None):
     else:
         bot.send_message(chat_id, fallback_text, reply_markup=markup)
 
-# ─────────────────── PREMIUM KEYBOARDS ───────────────────
 def kb_join():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📢 Join Official Channel", url=CHANNEL_URL))
@@ -142,7 +135,7 @@ def kb_admin():
     kb.add(types.InlineKeyboardButton("🎟 Gen Redeem", callback_data="adm_gen_redeem"))
     kb.add(types.InlineKeyboardButton("🔧 Maint OFF" if not db["maintenance"] else "🔧 Maint ON", callback_data="adm_maint"))
     kb.add(types.InlineKeyboardButton("📈 Bot Stats", callback_data="adm_stats"))
-    kb.add(types.InlineKeyboardButton("👥 Users List & Download", callback_data="adm_users"))
+    kb.add(types.InlineKeyboardButton("👥 Users List", callback_data="adm_users"))
     return kb
 
 def kb_maintenance():
@@ -152,9 +145,9 @@ def kb_maintenance():
 
 def kb_plans():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("👑 PRO (1000 Cards) - ₹149", callback_data="buy_pro"))
-    kb.add(types.InlineKeyboardButton("⚡ ULTRA (5000 Cards) - ₹299", callback_data="buy_ultra"))
-    kb.add(types.InlineKeyboardButton("💎 MAX (15000 Cards) - ₹499", callback_data="buy_max"))
+    kb.add(types.InlineKeyboardButton("👑 PRO (1000) - ₹149", callback_data="buy_pro"))
+    kb.add(types.InlineKeyboardButton("⚡ ULTRA (5000) - ₹299", callback_data="buy_ultra"))
+    kb.add(types.InlineKeyboardButton("💎 MAX (15000) - ₹499", callback_data="buy_max"))
     return kb
 
 def gate(message):
@@ -163,10 +156,9 @@ def gate(message):
         return bot.reply_to(message, "🛠 <b>Bot is currently under maintenance.</b>\nPlease check back later.", reply_markup=kb_maintenance())
     if is_banned(uid): return bot.reply_to(message, "🚫 <b>Access Denied.</b>\nYou have been banned.")
     if not is_member(uid):
-        return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>\nYou must join our channel to use the bot.", reply_markup=kb_join())
+        return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>\nYou must join our channel.", reply_markup=kb_join())
     return True
 
-# ─────────────────── CHECK LOGIC ───────────────────
 def get_bin_info(binn):
     try:
         r = requests.get(f'https://binchk-api.vercel.app/bin={binn}', timeout=5).json()
@@ -202,13 +194,13 @@ def run_check(message, creds):
     rem = get_remaining(uid)
     if rem <= 0:
         set_state(uid, "menu")
-        return bot.reply_to(message, "⚠️ <b>Limit Exhausted!</b>\nYou have 0 cards left. Upgrade your plan.", reply_markup=kb_menu(uid))
+        return bot.reply_to(message, "⚠️ <b>Limit Exhausted!</b>\nUpgrade your plan.", reply_markup=kb_menu(uid))
     
     total = len(creds)
     if not is_own and total > rem:
         total = rem
         creds = creds[:total]
-        bot.send_message(message.chat.id, f"⚠️ <b>Notice:</b> Checking only <b>{total}</b> cards due to your remaining limit.")
+        bot.send_message(message.chat.id, f"⚠️ <b>Notice:</b> Checking only <b>{total}</b> cards due to your limit.")
 
     status_msg = bot.reply_to(message, f"⚡ <b>Engine Started...</b>\n\n📊 Progress: <code>0 / {total}</code>\n✅ Hits: <code>0</code>\n❌ Declined: <code>0</code>")
     hits, declined, errors, done, last_edit = [], 0, 0, 0, 0
@@ -261,7 +253,6 @@ def run_check(message, creds):
     if not is_own and get_remaining(uid) <= 0:
         bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b> Upgrade to check more.", reply_markup=kb_plans())
 
-# ─────────────────── HANDLERS ───────────────────
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     uid = message.from_user.id
@@ -331,7 +322,6 @@ def on_file(message):
     set_state(message.from_user.id, "menu")
     threading.Thread(target=run_check, args=(message, creds), daemon=True).start()
 
-# ─────────────────── SUBSCRIPTION ───────────────────
 @bot.message_handler(func=lambda m: m.text == "💎 Premium Plans")
 def menu_plans(message):
     if not gate(message): return
@@ -386,7 +376,6 @@ def cb_approve_payment(cq):
         bot.edit_message_caption("❌ Disproved", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
         bot.send_message(uid_str, "❌ <b>Payment Fake Detection (Nigga)</b>\nYour payment proof is invalid.")
 
-# ─────────────────── REDEEM ───────────────────
 @bot.message_handler(func=lambda m: m.text == "🔑 Redeem Code")
 def menu_redeem(message):
     if not gate(message): return
@@ -407,7 +396,6 @@ def on_redeem(message):
     set_state(uid, "menu")
     bot.reply_to(message, f"🎉 <b>Redeemed Successfully!</b>\n+{rc['cards']} Cards added to your limit.", reply_markup=kb_menu(uid))
 
-# ─────────────────── ADMIN PANEL ───────────────────
 @bot.callback_query_handler(func=lambda c: c.data == "adm_ban")
 def cb_ban(cq):
     if not is_owner(cq.from_user.id): return
@@ -468,4 +456,8 @@ def on_gen_redeem(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     try:
         uses, cards = map(int, message.text.split())
-        code
+        code = "TJ-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
+        save_db(db)
+        set_state(message.from_user.id, "menu")
+        bot.reply_to(message, f"✅ <b>Code Generated!</b>\n<code>{code}</
