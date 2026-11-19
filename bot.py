@@ -6,7 +6,7 @@ import telebot
 from telebot import types
 import user_agent
 
-BOT_TOKEN = "9243123880:AAGrHcLptgQHFnF2rjHpwt7ALclTp4Dy6zs"
+BOT_TOKEN = "9135601732:AAFPZcKE7EIIB9ySbiATAtMEl21klsuiETY"
 OWNER_ID = 7799774057
 CHANNEL_ID = "@TirexFre"
 CHANNEL_URL = "https://t.me/TirexFre"
@@ -282,11 +282,11 @@ def cb_buy_plan(cq):
     bot.send_message(cq.from_user.id, "🛒 Plan: " + PLANS[plan_key]['name'] + "\nPay ₹" + str(PLANS[plan_key]['price']) + " to UPI: " + UPI_ID + "\n\nEnter 12-digit UTR:", reply_markup=kb_cancel())
     user_state[cq.from_user.id] = {"state": "wait_utr", "plan": plan_key}
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_utr" and m.text)
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_utr" and m.text and m.text != "❌ Cancel")
 def on_utr(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     utr = message.text.strip()
-    if not utr.isdigit() or len(utr) != 12: return bot.reply_to(message, "❌ Invalid UTR. Need 12 digits.")
+    if not utr.isdigit() or len(utr) != 12: return bot.reply_to(message, "❌ Invalid UTR. Need 12 digits.", reply_markup=kb_cancel())
     user_state[message.from_user.id]["utr"] = utr
     set_state(message.from_user.id, "wait_screenshot")
     bot.reply_to(message, "✅ UTR Saved.\nSend Payment Screenshot:", reply_markup=kb_cancel())
@@ -327,7 +327,7 @@ def menu_redeem(message):
     set_state(message.from_user.id, "wait_redeem")
     bot.reply_to(message, "🔑 Enter Redeem Code:", reply_markup=kb_cancel())
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_redeem" and m.text)
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_redeem" and m.text and m.text != "❌ Cancel")
 def on_redeem(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     code, uid = message.text.strip().upper(), str(message.from_user.id)
@@ -396,7 +396,7 @@ def cb_gen_redeem(cq):
     set_state(cq.from_user.id, "adm_gen_limit")
     bot.send_message(cq.from_user.id, "🎟 Format: USES CARDS (e.g. 5 1000):", reply_markup=kb_cancel())
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "adm_gen_limit" and m.text)
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "adm_gen_limit" and m.text and m.text != "❌ Cancel")
 def on_gen_redeem(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     try:
