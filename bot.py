@@ -1,4 +1,4 @@
-import os, json, time, requests, logging, threading, random, string, csv
+import os, json, time, requests, logging, threading, random, string
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -279,33 +279,25 @@ def menu_plans(message):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_"))
 def cb_buy_plan(cq):
     plan_key = cq.data.split("_")[1]
-    bot.send_message(cq.from_user.id, "🛒 Plan: " + PLANS[plan_key]['name'] + "\nPay ₹" + str(PLANS[plan_key]['price']) + " to UPI: " + UPI_ID + "\n\nEnter 12-digit UTR:", reply_markup=kb_cancel())
-    user_state[cq.from_user.id] = {"state": "wait_utr", "plan": plan_key}
+    bot.send_message(cq.from_user.id, "🛒 Plan: " + PLANS[plan_key]['name'] + "\nPay ₹" + str(PLANS[plan_key]['price']) + " to UPI: " + UPI_ID + "\n\nSend Payment Screenshot:", reply_markup=kb_cancel())
+    user_state[cq.from_user.id] = {"state": "wait_screenshot", "plan": plan_key}
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id) in ["wait_utr", "wait_screenshot"] and m.text and m.text != "❌ Cancel")
-def on_utr(message):
-    if len(message.text.strip()) == 12 and message.text.strip().isdigit():
-        user_state[message.from_user.id]["utr"] = message.text.strip()
-        set_state(message.from_user.id, "wait_screenshot")
-        bot.reply_to(message, "✅ UTR Saved.\nSend Payment Screenshot:", reply_markup=kb_cancel())
-    else:
-        if get_state(message.from_user.id) == "wait_utr":
-            bot.reply_to(message, "❌ Invalid UTR. Need 12 digits.", reply_markup=kb_cancel())
-        else:
-            bot.reply_to(message, "⚠️ Please send the Payment Screenshot.", reply_markup=kb_cancel())
-
-@bot.message_handler(content_types=["photo"], func=lambda m: get_state(m.from_user.id) == "wait_screenshot")
+@bot.message_handler(content_types=["photo"])
 def on_screenshot(message):
     uid = message.from_user.id
     data = user_state.get(uid, {})
-    if "plan" not in data or "utr" not in data: return bot.reply_to(message, "❌ Error.")
-    db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
+    if "plan" not in data: 
+        return bot.reply_to(message, "❌ Please select a plan first.", reply_markup=kb_menu(uid))
+    
+    db["pending_payments"][str(uid)] = {"plan": data["plan"]}
     save_db(db)
     bot.send_message(uid, "✅ Wait for Admin Approval", reply_markup=kb_menu(uid))
     set_state(uid, "menu")
+    user_state.pop(uid, None)
+    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ Approve", callback_data="appr_" + str(uid)), types.InlineKeyboardButton("❌ Disprove", callback_data="rej_" + str(uid)))
-    bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption="💰 New Payment\nUser: @" + str(message.from_user.username or uid) + "\nPlan: " + PLANS[data['plan']]['name'] + "\nUTR: " + data['utr'], reply_markup=kb)
+    bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption="💰 New Payment\nUser: @" + str(message.from_user.username or uid) + "\nPlan: " + PLANS[data['plan']]['name'], reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("appr_") or c.data.startswith("rej_"))
 def cb_approve_payment(cq):
