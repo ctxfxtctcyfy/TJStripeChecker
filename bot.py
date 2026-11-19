@@ -24,6 +24,10 @@ DB_FILE     = "db.json"
 CONCURRENCY = 10
 FREE_LIMIT  = 50
 
+STICKER_WELCOME = ""
+STICKER_SUCCESS = ""
+STICKER_PAYMENT = ""
+
 PLANS = {
     "pro":   {"name": "👑 PRO",   "limit": 1000,  "price": 149},
     "ultra": {"name": "⚡ ULTRA", "limit": 5000,  "price": 299},
@@ -443,4 +447,4 @@ def cb_maint(cq):
     if not is_owner(cq.from_user.id): return
     db["maintenance"] = not db["maintenance"]
     save_db(db)
-    bot.edit_message_text("🔧 Maint: <b>" + ('ON' if db['maintenance'] else 'OFF') + "</b>", chat_id=cq.message.chat.id, message_id=cq.message.message_id, reply
+    bot.edit_message_text("🔧 Maint: <b>" +
