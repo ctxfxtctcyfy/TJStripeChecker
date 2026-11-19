@@ -24,10 +24,6 @@ DB_FILE     = "db.json"
 CONCURRENCY = 10
 FREE_LIMIT  = 50
 
-STICKER_WELCOME = ""
-STICKER_SUCCESS = ""
-STICKER_PAYMENT = ""
-
 PLANS = {
     "pro":   {"name": "👑 PRO",   "limit": 1000,  "price": 149},
     "ultra": {"name": "⚡ ULTRA", "limit": 5000,  "price": 299},
@@ -99,13 +95,6 @@ def is_member(uid):
     if is_owner(uid): return True
     try: return bot.get_chat_member(CHANNEL_ID, uid).status in ("member", "administrator", "creator")
     except: return False
-
-def send_sticker_or_text(chat_id, sticker_id, fallback_text, markup=None):
-    if sticker_id:
-        bot.send_sticker(chat_id, sticker_id)
-        if fallback_text: bot.send_message(chat_id, fallback_text, reply_markup=markup)
-    else:
-        bot.send_message(chat_id, fallback_text, reply_markup=markup)
 
 def kb_join():
     kb = types.InlineKeyboardMarkup()
@@ -238,7 +227,6 @@ def run_check(message, creds):
             for h in hits: f.write(h[0] + " -> " + h[2] + " | Charged: $1\n")
         with open(fname, "rb") as f: bot.send_document(message.chat.id, f, caption="💎 <b>" + str(len(hits)) + " Charged Cards Found!</b>")
         os.remove(fname)
-        if STICKER_SUCCESS: bot.send_sticker(message.chat.id, STICKER_SUCCESS)
     if not is_own and get_remaining(uid) <= 0:
         bot.send_message(message.chat.id, "❌ <b>Limit Finished!</b>", reply_markup=kb_plans())
 
@@ -251,7 +239,7 @@ def cmd_start(message):
     if is_banned(uid): return bot.reply_to(message, "🚫 <b>Access Denied.</b>")
     if not is_member(uid): return bot.reply_to(message, "📢 <b>Channel Verification Required!</b>", reply_markup=kb_join())
     set_state(uid, "menu")
-    send_sticker_or_text(message.chat.id, STICKER_WELCOME, "👑 <b>Welcome to TirexJod Premium!</b>\n\nHigh-speed Stripe $1 Checker.\nSelect an option from below:", kb_menu(uid))
+    bot.send_message(message.chat.id, "👑 <b>Welcome to TirexJod Premium!</b>\n\nHigh-speed Stripe $1 Checker.\nSelect an option from below:", reply_markup=kb_menu(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
 def cb_check_join(cq):
@@ -340,7 +328,7 @@ def on_screenshot(message):
     if "plan" not in data: return bot.reply_to(message, "❌ Error.")
     db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
     save_db(db)
-    send_sticker_or_text(uid, STICKER_PAYMENT, "✅ <b>Wait for Admin Approval</b>", kb_menu(uid))
+    bot.send_message(uid, "✅ <b>Wait for Admin Approval</b>", reply_markup=kb_menu(uid))
     set_state(uid, "menu")
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ Approve", callback_data="appr_" + str(uid)), types.InlineKeyboardButton("❌ Disprove", callback_data="rej_" + str(uid)))
@@ -447,4 +435,12 @@ def on_gen_redeem(message):
         db["redeem_codes"][code] = {"limit": uses, "cards": cards, "used_by": []}
         save_db(db)
         set_state(message.from_user.id, "menu")
-        bot.reply_to(message, "✅ <b>Code Generated!</b>\n<code>"
+        bot.reply_to(message, "✅ <b>Code Generated!</b>\nCode: <code>" + code + "</code>\nUses: " + str(uses) + " | Cards: " + str(cards), reply_markup=kb_menu(message.from_user.id))
+    except: bot.reply_to(message, "❌ Invalid format. Send like `5 1000`.")
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_maint")
+def cb_maint(cq):
+    if not is_owner(cq.from_user.id): return
+    db["maintenance"] = not db["maintenance"]
+    save_db(db)
+    bot.edit_message_text("🔧 Maint: <b>" + ('ON' if db['maintenance'] else 'OFF') + "</b>", chat_id=cq.message.chat.id, message_id=cq.message.message_id, reply
