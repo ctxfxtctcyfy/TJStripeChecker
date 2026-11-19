@@ -282,20 +282,23 @@ def cb_buy_plan(cq):
     bot.send_message(cq.from_user.id, "🛒 Plan: " + PLANS[plan_key]['name'] + "\nPay ₹" + str(PLANS[plan_key]['price']) + " to UPI: " + UPI_ID + "\n\nEnter 12-digit UTR:", reply_markup=kb_cancel())
     user_state[cq.from_user.id] = {"state": "wait_utr", "plan": plan_key}
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "wait_utr" and m.text and m.text != "❌ Cancel")
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) in ["wait_utr", "wait_screenshot"] and m.text and m.text != "❌ Cancel")
 def on_utr(message):
-    if message.text == "❌ Cancel": return menu_cancel(message)
-    utr = message.text.strip()
-    if not utr.isdigit() or len(utr) != 12: return bot.reply_to(message, "❌ Invalid UTR. Need 12 digits.", reply_markup=kb_cancel())
-    user_state[message.from_user.id]["utr"] = utr
-    set_state(message.from_user.id, "wait_screenshot")
-    bot.reply_to(message, "✅ UTR Saved.\nSend Payment Screenshot:", reply_markup=kb_cancel())
+    if len(message.text.strip()) == 12 and message.text.strip().isdigit():
+        user_state[message.from_user.id]["utr"] = message.text.strip()
+        set_state(message.from_user.id, "wait_screenshot")
+        bot.reply_to(message, "✅ UTR Saved.\nSend Payment Screenshot:", reply_markup=kb_cancel())
+    else:
+        if get_state(message.from_user.id) == "wait_utr":
+            bot.reply_to(message, "❌ Invalid UTR. Need 12 digits.", reply_markup=kb_cancel())
+        else:
+            bot.reply_to(message, "⚠️ Please send the Payment Screenshot.", reply_markup=kb_cancel())
 
 @bot.message_handler(content_types=["photo"], func=lambda m: get_state(m.from_user.id) == "wait_screenshot")
 def on_screenshot(message):
     uid = message.from_user.id
     data = user_state.get(uid, {})
-    if "plan" not in data: return bot.reply_to(message, "❌ Error.")
+    if "plan" not in data or "utr" not in data: return bot.reply_to(message, "❌ Error.")
     db["pending_payments"][str(uid)] = {"plan": data["plan"], "utr": data["utr"]}
     save_db(db)
     bot.send_message(uid, "✅ Wait for Admin Approval", reply_markup=kb_menu(uid))
