@@ -465,4 +465,7 @@ def cb_gen_redeem(cq):
 
 @bot.message_handler(func=lambda m: get_state(m.from_user.id) == "adm_gen_limit" and m.text)
 def on_gen_redeem(message):
-    if message.text ==
+    if message.text == "❌ Cancel": return menu_cancel(message)
+    try:
+        uses, cards = map(int, message.text.split())
+        code
